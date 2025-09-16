@@ -8,6 +8,7 @@ import Debug from './pages/Debug'
 import MultiChainWallet from './pages/MultiChainWallet'
 import TronTest from './pages/TronTest'
 import MetaMaskTest from './pages/MetaMaskTest'
+import TonTest from './pages/TonTest'
 import './App.css'
 
 function App() {
@@ -25,6 +26,7 @@ function App() {
             <Route path="/multichain" element={<MultiChainWallet />} />
             <Route path="/tron-test" element={<TronTest />} />
             <Route path="/metamask-test" element={<MetaMaskTest />} />
+            <Route path="/ton-test" element={<TonTest />} />
           </Routes>
         </main>
       </div>

@@ -1,6 +1,7 @@
 import { AppKitButton } from '@reown/appkit/react'
 import { useAccount, useBalance, useDisconnect, useChainId, useSwitchChain } from 'wagmi'
 import { mainnet, sepolia, bsc, bscTestnet } from 'wagmi/chains'
+import MetaMaskConnectButton from '../components/MetaMaskConnectButton'
 
 function Wallet() {
   const { address, isConnected } = useAccount()
@@ -45,7 +46,7 @@ function Wallet() {
       
       <div style={{ marginBottom: '30px' }}>
         <h2>连接钱包</h2>
-        <AppKitButton />
+        <MetaMaskConnectButton />
       </div>
 
       {isConnected ? (
@@ -234,7 +235,7 @@ function Wallet() {
           <p style={{ color: '#666', marginBottom: '20px' }}>
             请先连接您的钱包以查看详细信息和进行操作
           </p>
-          <AppKitButton />
+          <MetaMaskConnectButton />
         </div>
       )}
     </div>

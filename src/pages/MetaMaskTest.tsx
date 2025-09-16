@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAccount, useConnect, useDisconnect } from 'wagmi'
 import { AppKitButton } from '@reown/appkit/react'
+import MetaMaskConnectButton from '../components/MetaMaskConnectButton'
 
 function MetaMaskTest() {
   const { address, isConnected, connector } = useAccount()
@@ -79,24 +80,11 @@ function MetaMaskTest() {
           <p><strong>MetaMask 已安装:</strong> {isMetaMaskInstalled ? '✅ 是' : '❌ 否'}</p>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-          <AppKitButton />
-          
-          <button
-            onClick={connectMetaMask}
-            disabled={isPending || !isMetaMaskInstalled}
-            style={{
-              padding: '10px 20px',
-              backgroundColor: isPending || !isMetaMaskInstalled ? '#6c757d' : '#f6851b',
-              color: 'white',
-              border: 'none',
-              borderRadius: '6px',
-              cursor: isPending || !isMetaMaskInstalled ? 'not-allowed' : 'pointer'
-            }}
-          >
-            {isPending ? '连接中...' : '直接连接 MetaMask'}
-          </button>
-
+        {/* 使用新的连接按钮组件 */}
+        <MetaMaskConnectButton />
+        
+        {/* 额外的测试按钮 */}
+        <div style={{ marginTop: '20px', display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
           <button
             onClick={requestAccountAccess}
             disabled={!isMetaMaskInstalled}
@@ -111,22 +99,6 @@ function MetaMaskTest() {
           >
             请求账户权限
           </button>
-
-          {isConnected && (
-            <button
-              onClick={() => disconnect()}
-              style={{
-                padding: '10px 20px',
-                backgroundColor: '#dc3545',
-                color: 'white',
-                border: 'none',
-                borderRadius: '6px',
-                cursor: 'pointer'
-              }}
-            >
-              断开连接
-            </button>
-          )}
         </div>
       </div>
 

@@ -27,6 +27,9 @@ createRoot(document.getElementById('root')!).render(
         <AppKitProvider
           projectId={import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || 'demo-project-id'}
           networks={networks}
+          enableNetworkSwitching={false}
+          enableAccountView={true}
+          enableOnramp={false}
         >
           <App />
         </AppKitProvider>
