@@ -11,6 +11,7 @@ function Navigation() {
     { path: '/multichain', label: '多链', icon: '🌐' },
     { path: '/tron-test', label: 'Tron测试', icon: '🔴' },
     { path: '/ton-test', label: 'TON测试', icon: '💎' },
+    { path: '/bitcoin-test', label: 'Bitcoin测试', icon: '₿' },
     { path: '/metamask-test', label: 'MetaMask测试', icon: '🦊' },
     { path: '/debug', label: '调试', icon: '🔧' },
     { path: '/about', label: '关于', icon: 'ℹ️' },

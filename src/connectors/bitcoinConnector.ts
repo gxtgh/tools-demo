@@ -25,6 +25,12 @@ export class BitcoinConnector {
 
   async connect(): Promise<{ address: string; publicKey: string }> {
     try {
+      // 优先尝试使用 OKX 钱包扩展
+      if (typeof window !== 'undefined' && (window as any).okxwallet && (window as any).okxwallet.bitcoin) {
+        return await this.connectOKXWallet()
+      }
+
+      // 如果没有 OKX 钱包，使用密钥对方式
       if (this.config.privateKey) {
         // 使用提供的私钥
         const privateKeyBuffer = Buffer.from(this.config.privateKey, 'hex')
@@ -52,12 +58,56 @@ export class BitcoinConnector {
     }
   }
 
+  private async connectOKXWallet(): Promise<{ address: string; publicKey: string }> {
+    try {
+      const okxBitcoin = (window as any).okxwallet.bitcoin
+      
+      // 请求连接
+      const accounts = await okxBitcoin.requestAccounts()
+      
+      if (!accounts || accounts.length === 0) {
+        throw new Error('OKX 钱包未返回账户信息')
+      }
+
+      const address = accounts[0]
+      
+      // 获取公钥
+      let publicKey = ''
+      try {
+        const pubKey = await okxBitcoin.getPublicKey()
+        publicKey = pubKey || ''
+      } catch (pubKeyError) {
+        console.warn('无法获取公钥:', pubKeyError)
+        publicKey = 'N/A'
+      }
+
+      return {
+        address,
+        publicKey
+      }
+    } catch (error) {
+      throw new Error(`OKX 钱包连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    }
+  }
+
   async disconnect(): Promise<void> {
     this.keyPair = null
   }
 
   async getBalance(address: string): Promise<string> {
     try {
+      // 优先尝试使用 OKX 钱包 API
+      if (typeof window !== 'undefined' && (window as any).okxwallet && (window as any).okxwallet.bitcoin) {
+        try {
+          const okxBitcoin = (window as any).okxwallet.bitcoin
+          const balance = await okxBitcoin.getBalance()
+          return balance.toString()
+        } catch (okxError) {
+          console.warn('OKX 钱包获取余额失败，使用备用方法:', okxError)
+        }
+      }
+
+      // 备用方法：使用区块链浏览器 API
       const response = await fetch(`${this.config.rpcUrl}/address/${address}`)
       const data = await response.json()
       
@@ -70,11 +120,25 @@ export class BitcoinConnector {
   }
 
   async sendTransaction(to: string, amount: string): Promise<string> {
-    if (!this.keyPair) {
-      throw new Error('Bitcoin 未连接')
-    }
-
     try {
+      // 优先尝试使用 OKX 钱包发送交易
+      if (typeof window !== 'undefined' && (window as any).okxwallet && (window as any).okxwallet.bitcoin) {
+        try {
+          const okxBitcoin = (window as any).okxwallet.bitcoin
+          const amountSatoshi = Math.floor(parseFloat(amount) * 100000000)
+          
+          const txid = await okxBitcoin.sendBitcoin(to, amountSatoshi)
+          return txid
+        } catch (okxError) {
+          console.warn('OKX 钱包发送交易失败，使用备用方法:', okxError)
+        }
+      }
+
+      // 备用方法：使用密钥对发送交易
+      if (!this.keyPair) {
+        throw new Error('Bitcoin 未连接且无法使用 OKX 钱包')
+      }
+
       // 获取 UTXOs
       const address = bitcoin.payments.p2pkh({
         pubkey: this.keyPair.publicKey,
@@ -135,10 +199,27 @@ export class BitcoinConnector {
   }
 
   isConnected(): boolean {
+    // 检查是否通过 OKX 钱包连接
+    if (typeof window !== 'undefined' && (window as any).okxwallet && (window as any).okxwallet.bitcoin) {
+      return true
+    }
+    
+    // 检查是否通过密钥对连接
     return this.keyPair !== null
   }
 
   getAddress(): string | null {
+    // 优先从 OKX 钱包获取地址
+    if (typeof window !== 'undefined' && (window as any).okxwallet && (window as any).okxwallet.bitcoin) {
+      try {
+        // 这里需要存储连接时的地址，因为 OKX 可能没有直接获取地址的方法
+        return null // 暂时返回 null，实际地址在连接时获取
+      } catch (error) {
+        console.warn('无法从 OKX 钱包获取地址:', error)
+      }
+    }
+
+    // 从密钥对获取地址
     if (!this.keyPair) return null
     
     const { address } = bitcoin.payments.p2pkh({
@@ -147,5 +228,12 @@ export class BitcoinConnector {
     })
     
     return address || null
+  }
+
+  // 检查 OKX 钱包是否可用
+  static isOKXWalletAvailable(): boolean {
+    return typeof window !== 'undefined' && 
+           !!(window as any).okxwallet && 
+           !!(window as any).okxwallet.bitcoin
   }
 }

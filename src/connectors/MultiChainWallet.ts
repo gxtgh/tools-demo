@@ -46,6 +46,11 @@ export class MultiChainWallet {
         return await this.connectTon()
       }
 
+      // 特殊处理 Bitcoin 连接
+      if (chainType === 'bitcoin') {
+        return await this.connectBitcoin()
+      }
+
       const { address, publicKey } = await connector.connect()
       const balance = await connector.getBalance(address)
 
@@ -181,6 +186,59 @@ export class MultiChainWallet {
       }
     } catch (error) {
       throw new Error(`Tonkeeper 扩展连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
+    }
+  }
+
+  private async connectBitcoin(): Promise<WalletConnection> {
+    try {
+      // 检查是否有 OKX 钱包
+      if (typeof window !== 'undefined' && (window as any).okxwallet && (window as any).okxwallet.bitcoin) {
+        const okxBitcoin = (window as any).okxwallet.bitcoin
+        
+        // 请求连接
+        const accounts = await okxBitcoin.requestAccounts()
+        
+        if (!accounts || accounts.length === 0) {
+          throw new Error('OKX 钱包未返回账户信息')
+        }
+
+        const address = accounts[0]
+        
+        // 获取公钥
+        let publicKey = ''
+        try {
+          const pubKey = await okxBitcoin.getPublicKey()
+          publicKey = pubKey || 'N/A'
+        } catch (pubKeyError) {
+          console.warn('无法获取公钥:', pubKeyError)
+          publicKey = 'N/A'
+        }
+
+        // 获取余额
+        let balance = '0'
+        try {
+          const bal = await okxBitcoin.getBalance()
+          balance = bal.toString()
+        } catch (balanceError) {
+          console.warn('无法获取余额:', balanceError)
+          balance = '0'
+        }
+
+        const connection: WalletConnection = {
+          chainType: 'bitcoin',
+          address,
+          publicKey,
+          balance,
+          isConnected: true
+        }
+        
+        this.connections.set('bitcoin', connection)
+        return connection
+      } else {
+        throw new Error('OKX 钱包扩展未检测到，请安装 OKX 钱包并确保支持 Bitcoin')
+      }
+    } catch (error) {
+      throw new Error(`Bitcoin 连接失败: ${error instanceof Error ? error.message : '未知错误'}`)
     }
   }
 
