@@ -14,6 +14,7 @@ function TronQueryBalance() {
   const [singleAddress, setSingleAddress] = useState<string>('')
   const [singleResult, setSingleResult] = useState<AddressBalance | null>(null)
   const [isQueryingSingle, setIsQueryingSingle] = useState(false)
+  const [batchProgress, setBatchProgress] = useState<{current: number, total: number} | null>(null)
 
   const querySingleBalance = async () => {
     if (!singleAddress.trim()) {
@@ -58,40 +59,69 @@ function TronQueryBalance() {
 
     setIsQueryingBatch(true)
     setBatchResults([])
+    setBatchProgress(null)
 
     const addresses = batchAddresses.split('\n').filter(addr => addr.trim())
     const results: AddressBalance[] = []
 
-    for (const addr of addresses) {
-      const trimmedAddr = addr.trim()
-      if (!trimmedAddr) continue
+    // 设置总进度
+    setBatchProgress({ current: 0, total: addresses.length })
 
-      try {
-        // 使用 TronGrid API 查询余额
-        const response = await fetch(`https://api.trongrid.io/v1/accounts/${trimmedAddr}`)
-        if (response.ok) {
-          const data = await response.json()
-          const balance = (data.data[0]?.balance || 0) / 1000000 // 转换为 TRX
-          results.push({
+    // 批量查询，分批处理避免请求过于频繁
+    const batchSize = 8 // TronGrid API 限制适中，每批处理8个
+    
+    for (let i = 0; i < addresses.length; i += batchSize) {
+      const batch = addresses.slice(i, i + batchSize)
+      
+      // 并行查询当前批次
+      const batchPromises = batch.map(async (addr) => {
+        const trimmedAddr = addr.trim()
+        if (!trimmedAddr) return null
+
+        try {
+          // 使用 TronGrid API 查询余额
+          const response = await fetch(`https://api.trongrid.io/v1/accounts/${trimmedAddr}`)
+          if (response.ok) {
+            const data = await response.json()
+            const balance = (data.data[0]?.balance || 0) / 1000000 // 转换为 TRX
+            return {
+              address: trimmedAddr,
+              balance: balance.toFixed(6),
+              symbol: 'TRX'
+            }
+          } else {
+            throw new Error(`API 请求失败: ${response.status}`)
+          }
+        } catch (error) {
+          console.error(`查询 Tron 地址 ${trimmedAddr} 失败:`, error)
+          return {
             address: trimmedAddr,
-            balance: balance.toString(),
-            symbol: 'TRX'
-          })
-        } else {
-          throw new Error('API 请求失败')
+            balance: '0',
+            symbol: 'TRX',
+            error: error instanceof Error ? error.message : '查询失败'
+          }
         }
-      } catch (error) {
-        results.push({
-          address: trimmedAddr,
-          balance: '0',
-          symbol: 'TRX',
-          error: error instanceof Error ? error.message : '查询失败'
-        })
+      })
+
+      // 等待当前批次完成
+      const batchResults = await Promise.all(batchPromises)
+      const validResults = batchResults.filter(result => result !== null) as AddressBalance[]
+      
+      // 更新结果并刷新UI
+      results.push(...validResults)
+      setBatchResults([...results]) // 实时更新结果
+      
+      // 更新进度
+      setBatchProgress({ current: results.length, total: addresses.length })
+
+      // 如果不是最后一批，延迟一下避免请求过于频繁
+      if (i + batchSize < addresses.length) {
+        await new Promise(resolve => setTimeout(resolve, 600)) // TronGrid API 适中延迟
       }
     }
 
-    setBatchResults(results)
     setIsQueryingBatch(false)
+    setBatchProgress(null)
   }
 
   const generateSampleAddresses = () => {
@@ -205,18 +235,49 @@ function TronQueryBalance() {
           
           <button
             onClick={generateSampleAddresses}
+            disabled={isQueryingBatch}
             style={{
               padding: '10px 20px',
-              backgroundColor: '#28a745',
+              backgroundColor: isQueryingBatch ? '#6c757d' : '#28a745',
               color: 'white',
               border: 'none',
               borderRadius: '6px',
-              cursor: 'pointer'
+              cursor: isQueryingBatch ? 'not-allowed' : 'pointer'
             }}
           >
             加载示例地址
           </button>
         </div>
+
+        {/* 批量查询进度 */}
+        {batchProgress && (
+          <div style={{
+            marginBottom: '15px',
+            padding: '10px',
+            backgroundColor: '#ffe6e6',
+            borderRadius: '6px',
+            border: '1px solid #ff073a'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span>查询进度: {batchProgress.current} / {batchProgress.total}</span>
+              <span>{Math.round((batchProgress.current / batchProgress.total) * 100)}%</span>
+            </div>
+            <div style={{
+              width: '100%',
+              height: '8px',
+              backgroundColor: '#e0e0e0',
+              borderRadius: '4px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+                height: '100%',
+                backgroundColor: '#ff073a',
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 批量查询结果 */}

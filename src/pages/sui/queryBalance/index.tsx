@@ -7,7 +7,7 @@ interface AddressBalance {
   error?: string
 }
 
-function BitcoinQueryBalance() {
+function SuiQueryBalance() {
   const [batchAddresses, setBatchAddresses] = useState<string>('')
   const [batchResults, setBatchResults] = useState<AddressBalance[]>([])
   const [isQueryingBatch, setIsQueryingBatch] = useState(false)
@@ -26,24 +26,44 @@ function BitcoinQueryBalance() {
     setSingleResult(null)
 
     try {
-      // 使用 Blockstream API 查询余额
-      const response = await fetch(`https://blockstream.info/api/address/${singleAddress.trim()}`)
+      const address = singleAddress.trim()
+      
+      // 使用 Sui RPC API 查询余额
+      const response = await fetch('https://fullnode.mainnet.sui.io:443', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'suix_getBalance',
+          params: [address]
+        })
+      })
+
       if (response.ok) {
         const data = await response.json()
-        const balance = ((data.chain_stats.funded_txo_sum || 0) - (data.chain_stats.spent_txo_sum || 0)) / 100000000
-        setSingleResult({
-          address: singleAddress.trim(),
-          balance: balance.toString(),
-          symbol: 'BTC'
-        })
+        if (data.result) {
+          // Sui 余额以 MIST 为单位，需要除以 10^9 转换为 SUI
+          const balance = parseInt(data.result.totalBalance) / 1000000000
+          setSingleResult({
+            address: address,
+            balance: balance.toFixed(6),
+            symbol: 'SUI'
+          })
+        } else {
+          throw new Error(data.error?.message || 'API 返回错误')
+        }
       } else {
-        throw new Error('API 请求失败')
+        throw new Error(`API 请求失败: ${response.status}`)
       }
     } catch (error) {
+      console.error('查询 Sui 余额失败:', error)
       setSingleResult({
         address: singleAddress.trim(),
         balance: '0',
-        symbol: 'BTC',
+        symbol: 'SUI',
         error: error instanceof Error ? error.message : '查询失败'
       })
     } finally {
@@ -68,7 +88,7 @@ function BitcoinQueryBalance() {
     setBatchProgress({ current: 0, total: addresses.length })
 
     // 批量查询，分批处理避免请求过于频繁
-    const batchSize = 5 // Bitcoin API 限制更严格，每批处理5个
+    const batchSize = 6 // Sui RPC 限制较严格，每批处理6个
     
     for (let i = 0; i < addresses.length; i += batchSize) {
       const batch = addresses.slice(i, i + batchSize)
@@ -79,25 +99,42 @@ function BitcoinQueryBalance() {
         if (!trimmedAddr) return null
 
         try {
-          // 使用 Blockstream API 查询余额
-          const response = await fetch(`https://blockstream.info/api/address/${trimmedAddr}`)
+          // 使用 Sui RPC API 查询余额
+          const response = await fetch('https://fullnode.mainnet.sui.io:443', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              jsonrpc: '2.0',
+              id: Math.floor(Math.random() * 1000),
+              method: 'suix_getBalance',
+              params: [trimmedAddr]
+            })
+          })
+
           if (response.ok) {
             const data = await response.json()
-            const balance = ((data.chain_stats.funded_txo_sum || 0) - (data.chain_stats.spent_txo_sum || 0)) / 100000000
-            return {
-              address: trimmedAddr,
-              balance: balance.toFixed(8),
-              symbol: 'BTC'
+            if (data.result) {
+              // Sui 余额以 MIST 为单位，需要除以 10^9 转换为 SUI
+              const balance = parseInt(data.result.totalBalance) / 1000000000
+              return {
+                address: trimmedAddr,
+                balance: balance.toFixed(6),
+                symbol: 'SUI'
+              }
+            } else {
+              throw new Error(data.error?.message || 'API 返回错误')
             }
           } else {
             throw new Error(`API 请求失败: ${response.status}`)
           }
         } catch (error) {
-          console.error(`查询 Bitcoin 地址 ${trimmedAddr} 失败:`, error)
+          console.error(`查询 Sui 地址 ${trimmedAddr} 失败:`, error)
           return {
             address: trimmedAddr,
             balance: '0',
-            symbol: 'BTC',
+            symbol: 'SUI',
             error: error instanceof Error ? error.message : '查询失败'
           }
         }
@@ -116,7 +153,7 @@ function BitcoinQueryBalance() {
 
       // 如果不是最后一批，延迟一下避免请求过于频繁
       if (i + batchSize < addresses.length) {
-        await new Promise(resolve => setTimeout(resolve, 1000)) // Bitcoin API 需要更长延迟
+        await new Promise(resolve => setTimeout(resolve, 800)) // Sui RPC 需要较长延迟
       }
     }
 
@@ -126,22 +163,22 @@ function BitcoinQueryBalance() {
 
   const generateSampleAddresses = () => {
     const sampleAddresses = [
-      '1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa', // Genesis block address
-      '3J98t1WpEZ73CNmQviecrnyiWrnqRhWNLy',
-      'bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh',
-      '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2',
-      '3QJmV3qfvL9SuYo34YihAf3sRCW3qSinyC'
+      '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef',
+      '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890',
+      '0x567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234',
+      '0xfedcba0987654321fedcba0987654321fedcba0987654321fedcba0987654321',
+      '0x1111111111111111111111111111111111111111111111111111111111111111'
     ]
     setBatchAddresses(sampleAddresses.join('\n'))
   }
 
   return (
     <div style={{ padding: '20px' }}>
-      <h1>📊 Bitcoin 余额查询</h1>
+      <h1>📊 Sui 余额查询</h1>
       
       {/* 面包屑导航 */}
       <div style={{ marginBottom: '20px', fontSize: '14px', color: '#666' }}>
-        <a href="/bitcoin/wallets" style={{ color: '#007bff', textDecoration: 'none' }}>Bitcoin 钱包</a>
+        <a href="/sui/wallets" style={{ color: '#007bff', textDecoration: 'none' }}>Sui 钱包</a>
         <span style={{ margin: '0 8px' }}>&gt;</span>
         <span>余额查询</span>
       </div>
@@ -154,7 +191,7 @@ function BitcoinQueryBalance() {
             type="text"
             value={singleAddress}
             onChange={(e) => setSingleAddress(e.target.value)}
-            placeholder="请输入 Bitcoin 地址"
+            placeholder="请输入 Sui 地址 (0x...)"
             style={{
               flex: 1,
               padding: '10px',
@@ -169,7 +206,7 @@ function BitcoinQueryBalance() {
             disabled={isQueryingSingle}
             style={{
               padding: '10px 20px',
-              backgroundColor: isQueryingSingle ? '#6c757d' : '#f7931a',
+              backgroundColor: isQueryingSingle ? '#6c757d' : '#4da6ff',
               color: 'white',
               border: 'none',
               borderRadius: '6px',
@@ -204,7 +241,7 @@ function BitcoinQueryBalance() {
           <textarea
             value={batchAddresses}
             onChange={(e) => setBatchAddresses(e.target.value)}
-            placeholder="请输入要查询的 Bitcoin 地址，每行一个"
+            placeholder="请输入要查询的 Sui 地址，每行一个"
             style={{
               width: '100%',
               height: '200px',
@@ -223,7 +260,7 @@ function BitcoinQueryBalance() {
             disabled={isQueryingBatch}
             style={{
               padding: '10px 20px',
-              backgroundColor: isQueryingBatch ? '#6c757d' : '#f7931a',
+              backgroundColor: isQueryingBatch ? '#6c757d' : '#4da6ff',
               color: 'white',
               border: 'none',
               borderRadius: '6px',
@@ -254,9 +291,9 @@ function BitcoinQueryBalance() {
           <div style={{
             marginBottom: '15px',
             padding: '10px',
-            backgroundColor: '#fff3cd',
+            backgroundColor: '#e8f4fd',
             borderRadius: '6px',
-            border: '1px solid #f7931a'
+            border: '1px solid #4da6ff'
           }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
               <span>查询进度: {batchProgress.current} / {batchProgress.total}</span>
@@ -272,7 +309,7 @@ function BitcoinQueryBalance() {
               <div style={{
                 width: `${(batchProgress.current / batchProgress.total) * 100}%`,
                 height: '100%',
-                backgroundColor: '#f7931a',
+                backgroundColor: '#4da6ff',
                 transition: 'width 0.3s ease'
               }} />
             </div>
@@ -355,7 +392,7 @@ function BitcoinQueryBalance() {
               <strong>总地址数:</strong> {batchResults.length} | 
               <strong> 成功:</strong> {batchResults.filter(r => !r.error).length} | 
               <strong> 失败:</strong> {batchResults.filter(r => r.error).length} | 
-              <strong> 总余额:</strong> {batchResults.reduce((sum, r) => sum + (r.error ? 0 : parseFloat(r.balance)), 0).toFixed(8)} BTC
+              <strong> 总余额:</strong> {batchResults.reduce((sum, r) => sum + (r.error ? 0 : parseFloat(r.balance)), 0).toFixed(4)} SUI
             </p>
           </div>
         </div>
@@ -365,18 +402,15 @@ function BitcoinQueryBalance() {
       <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#e9ecef', borderRadius: '8px' }}>
         <h3>使用说明</h3>
         <ul style={{ textAlign: 'left' }}>
-          <li><strong>真实查询:</strong> 使用 Blockstream API 直接查询 Bitcoin 区块链数据</li>
-          <li><strong>地址支持:</strong> 支持 Legacy、SegWit、Native SegWit 等所有 Bitcoin 地址格式</li>
-          <li><strong>单个查询:</strong> 输入单个 Bitcoin 地址进行快速查询</li>
-          <li><strong>批量查询:</strong> 支持批量查询多个地址（每批5个，避免 API 限制）</li>
-          <li><strong>实时更新:</strong> 批量查询时实时显示查询进度和结果</li>
-          <li><strong>示例地址:</strong> 包含创世区块地址等知名 Bitcoin 地址</li>
-          <li><strong>精确显示:</strong> 余额精确到小数点后8位（satoshi 级别）</li>
-          <li><strong>API 限制:</strong> 自动处理 API 请求频率限制，确保查询稳定性</li>
+          <li><strong>单个查询:</strong> 输入单个 Sui 地址进行快速查询</li>
+          <li><strong>批量查询:</strong> 输入多个地址（每行一个）进行批量查询</li>
+          <li><strong>示例地址:</strong> 点击"加载示例地址"可以加载一些示例地址进行测试</li>
+          <li><strong>API 支持:</strong> 使用 Sui RPC API 获取实时余额数据</li>
+          <li><strong>网络支持:</strong> 支持 Sui 主网和测试网</li>
         </ul>
       </div>
     </div>
   )
 }
 
-export default BitcoinQueryBalance
+export default SuiQueryBalance

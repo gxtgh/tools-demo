@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { useChainId } from 'wagmi'
+import { useChainId, usePublicClient } from 'wagmi'
 import { mainnet, sepolia, bsc, bscTestnet } from 'wagmi/chains'
+import { formatEther, isAddress } from 'viem'
 
 interface AddressBalance {
   address: string
@@ -11,12 +12,14 @@ interface AddressBalance {
 
 function EthereumQueryBalance() {
   const chainId = useChainId()
+  const publicClient = usePublicClient()
   const [batchAddresses, setBatchAddresses] = useState<string>('')
   const [batchResults, setBatchResults] = useState<AddressBalance[]>([])
   const [isQueryingBatch, setIsQueryingBatch] = useState(false)
   const [singleAddress, setSingleAddress] = useState<string>('')
   const [singleResult, setSingleResult] = useState<AddressBalance | null>(null)
   const [isQueryingSingle, setIsQueryingSingle] = useState(false)
+  const [batchProgress, setBatchProgress] = useState<{current: number, total: number} | null>(null)
 
   const getChainInfo = () => {
     switch (chainId) {
@@ -39,21 +42,41 @@ function EthereumQueryBalance() {
       return
     }
 
+    const address = singleAddress.trim()
+    
+    // 验证地址格式
+    if (!isAddress(address)) {
+      alert('请输入有效的以太坊地址')
+      return
+    }
+
     setIsQueryingSingle(true)
     setSingleResult(null)
 
     try {
       const chainInfo = getChainInfo()
-      // 这里应该使用实际的 API 查询，目前使用模拟数据
-      const mockBalance = (Math.random() * 10).toFixed(4)
+      
+      if (!publicClient) {
+        throw new Error('无法连接到区块链网络，请检查网络连接')
+      }
+
+      // 使用 viem 查询真实余额
+      const balance = await publicClient.getBalance({
+        address: address as `0x${string}`
+      })
+
+      // 将 wei 转换为 ether
+      const formattedBalance = formatEther(balance)
+      
       setSingleResult({
-        address: singleAddress.trim(),
-        balance: mockBalance,
+        address: address,
+        balance: parseFloat(formattedBalance).toFixed(6),
         symbol: chainInfo.symbol
       })
     } catch (error) {
+      console.error('查询余额失败:', error)
       setSingleResult({
-        address: singleAddress.trim(),
+        address: address,
         balance: '0',
         symbol: getChainInfo().symbol,
         error: error instanceof Error ? error.message : '查询失败'
@@ -71,35 +94,86 @@ function EthereumQueryBalance() {
 
     setIsQueryingBatch(true)
     setBatchResults([])
+    setBatchProgress(null)
 
     const addresses = batchAddresses.split('\n').filter(addr => addr.trim())
     const results: AddressBalance[] = []
     const chainInfo = getChainInfo()
 
-    for (const addr of addresses) {
-      const trimmedAddr = addr.trim()
-      if (!trimmedAddr) continue
+    if (!publicClient) {
+      alert('无法连接到区块链网络，请检查网络连接')
+      setIsQueryingBatch(false)
+      return
+    }
 
-      try {
-        // 这里应该使用实际的 API 查询，目前使用模拟数据
-        const mockBalance = (Math.random() * 10).toFixed(4)
-        results.push({
-          address: trimmedAddr,
-          balance: mockBalance,
-          symbol: chainInfo.symbol
-        })
-      } catch (error) {
-        results.push({
-          address: trimmedAddr,
-          balance: '0',
-          symbol: chainInfo.symbol,
-          error: error instanceof Error ? error.message : '查询失败'
-        })
+    // 设置总进度
+    setBatchProgress({ current: 0, total: addresses.length })
+
+    // 批量查询，但为了避免 RPC 限制，我们分批处理
+    const batchSize = 10 // 每批处理10个地址
+    
+    for (let i = 0; i < addresses.length; i += batchSize) {
+      const batch = addresses.slice(i, i + batchSize)
+      
+      // 并行查询当前批次的所有地址
+      const batchPromises = batch.map(async (addr) => {
+        const trimmedAddr = addr.trim()
+        if (!trimmedAddr) return null
+
+        try {
+          // 验证地址格式
+          if (!isAddress(trimmedAddr)) {
+            return {
+              address: trimmedAddr,
+              balance: '0',
+              symbol: chainInfo.symbol,
+              error: '无效的地址格式'
+            }
+          }
+
+          // 使用 viem 查询真实余额
+          const balance = await publicClient.getBalance({
+            address: trimmedAddr as `0x${string}`
+          })
+
+          // 将 wei 转换为 ether
+          const formattedBalance = formatEther(balance)
+          
+          return {
+            address: trimmedAddr,
+            balance: parseFloat(formattedBalance).toFixed(6),
+            symbol: chainInfo.symbol
+          }
+        } catch (error) {
+          console.error(`查询地址 ${trimmedAddr} 失败:`, error)
+          return {
+            address: trimmedAddr,
+            balance: '0',
+            symbol: chainInfo.symbol,
+            error: error instanceof Error ? error.message : '查询失败'
+          }
+        }
+      })
+
+      // 等待当前批次完成
+      const batchResults = await Promise.all(batchPromises)
+      const validResults = batchResults.filter(result => result !== null) as AddressBalance[]
+      
+      // 更新结果并刷新UI
+      results.push(...validResults)
+      setBatchResults([...results]) // 实时更新结果
+      
+      // 更新进度
+      setBatchProgress({ current: results.length, total: addresses.length })
+
+      // 如果不是最后一批，稍微延迟一下避免请求过于频繁
+      if (i + batchSize < addresses.length) {
+        await new Promise(resolve => setTimeout(resolve, 500))
       }
     }
 
-    setBatchResults(results)
     setIsQueryingBatch(false)
+    setBatchProgress(null)
   }
 
   const generateSampleAddresses = () => {
@@ -227,18 +301,49 @@ function EthereumQueryBalance() {
           
           <button
             onClick={generateSampleAddresses}
+            disabled={isQueryingBatch}
             style={{
               padding: '10px 20px',
-              backgroundColor: '#28a745',
+              backgroundColor: isQueryingBatch ? '#6c757d' : '#28a745',
               color: 'white',
               border: 'none',
               borderRadius: '6px',
-              cursor: 'pointer'
+              cursor: isQueryingBatch ? 'not-allowed' : 'pointer'
             }}
           >
             加载示例地址
           </button>
         </div>
+
+        {/* 批量查询进度 */}
+        {batchProgress && (
+          <div style={{
+            marginBottom: '15px',
+            padding: '10px',
+            backgroundColor: '#e3f2fd',
+            borderRadius: '6px',
+            border: '1px solid #2196f3'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <span>查询进度: {batchProgress.current} / {batchProgress.total}</span>
+              <span>{Math.round((batchProgress.current / batchProgress.total) * 100)}%</span>
+            </div>
+            <div style={{
+              width: '100%',
+              height: '8px',
+              backgroundColor: '#e0e0e0',
+              borderRadius: '4px',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: `${(batchProgress.current / batchProgress.total) * 100}%`,
+                height: '100%',
+                backgroundColor: '#2196f3',
+                transition: 'width 0.3s ease'
+              }} />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 批量查询结果 */}
@@ -326,11 +431,15 @@ function EthereumQueryBalance() {
       <div style={{ marginTop: '30px', padding: '20px', backgroundColor: '#e9ecef', borderRadius: '8px' }}>
         <h3>使用说明</h3>
         <ul style={{ textAlign: 'left' }}>
-          <li><strong>网络自适应:</strong> 自动识别当前网络并使用对应的 API</li>
+          <li><strong>真实查询:</strong> 使用 Viem 直接从区块链查询真实余额数据</li>
+          <li><strong>网络自适应:</strong> 自动识别当前网络并使用对应的 RPC 节点</li>
+          <li><strong>地址验证:</strong> 自动验证地址格式，确保查询有效性</li>
           <li><strong>单个查询:</strong> 输入单个 Ethereum 地址进行快速查询</li>
-          <li><strong>批量查询:</strong> 输入多个地址（每行一个）进行批量查询</li>
-          <li><strong>示例地址:</strong> 点击"加载示例地址"可以加载一些示例地址进行测试</li>
-          <li><strong>多网络支持:</strong> 支持 Ethereum 主网、测试网、BSC 主网、测试网</li>
+          <li><strong>批量查询:</strong> 支持批量查询多个地址（每批10个，避免 RPC 限制）</li>
+          <li><strong>实时更新:</strong> 批量查询时实时显示查询进度和结果</li>
+          <li><strong>示例地址:</strong> 包含 Vitalik 等知名地址用于测试</li>
+          <li><strong>多网络支持:</strong> 支持 Ethereum 主网、Sepolia 测试网、BSC 主网、BSC 测试网</li>
+          <li><strong>精确显示:</strong> 余额精确到小数点后6位，支持大额和小额余额显示</li>
         </ul>
       </div>
     </div>

@@ -17,6 +17,12 @@ import BitcoinWallets from './pages/bitcoin/wallets'
 import BitcoinQueryBalance from './pages/bitcoin/queryBalance'
 import TronWallets from './pages/tron/wallets'
 import TronQueryBalance from './pages/tron/queryBalance'
+import SuiWallets from './pages/sui/wallets'
+import SuiQueryBalance from './pages/sui/queryBalance'
+import AptosWallets from './pages/aptos/wallets'
+import AptosQueryBalance from './pages/aptos/queryBalance'
+import TonWallets from './pages/ton/wallets'
+import TonQueryBalance from './pages/ton/queryBalance'
 import './App.css'
 
 function App() {
@@ -45,6 +51,12 @@ function App() {
             <Route path="/bitcoin/queryBalance" element={<BitcoinQueryBalance />} />
             <Route path="/tron/wallets" element={<TronWallets />} />
             <Route path="/tron/queryBalance" element={<TronQueryBalance />} />
+            <Route path="/sui/wallets" element={<SuiWallets />} />
+            <Route path="/sui/queryBalance" element={<SuiQueryBalance />} />
+            <Route path="/aptos/wallets" element={<AptosWallets />} />
+            <Route path="/aptos/queryBalance" element={<AptosQueryBalance />} />
+            <Route path="/ton/wallets" element={<TonWallets />} />
+            <Route path="/ton/queryBalance" element={<TonQueryBalance />} />
             
             {/* 测试页面 */}
             <Route path="/tron-test" element={<TronTest />} />
